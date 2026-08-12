@@ -1,0 +1,58 @@
+# AI Cartoon Video Converter - Configuration
+# Safe defaults for Google Colab and local execution
+
+# Processing Settings
+chunk_duration: 300        # seconds: 60, 120, 300, 600
+resolution: "original"     # original, 480p, 720p, 1080p
+fps: "original"            # original, 24, 25, 30, 60
+output_format: "mp4"
+video_codec: "libx264"
+audio_codec: "aac"
+crf: 23                    # 0-51, lower is higher quality
+preset: "medium"           # ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow
+
+# Model Settings
+model: "animeganv2"        # animeganv2, whitebox
+model_variant: "paprika"   # For AnimeGANv2: celeba_distill, face_paint_512_v1, face_paint_512_v2, paprika
+batch_size: 4              # Auto-adjusted based on GPU memory
+mixed_precision: true      # Use torch.cuda.amp when available
+
+# Paths
+output_directory: "outputs"
+cache_directory: "cache"
+temp_directory: "temp"
+log_directory: "logs"
+jobs_directory: "jobs"
+models_directory: "models/weights"
+google_drive_directory: "AI_Cartoon_Output"
+
+# Google Drive
+google_drive_enabled: false
+auto_mount_drive: true
+
+# Retry & Recovery
+max_retries: 3
+retry_delay: 5             # seconds
+network_timeout: 60        # seconds
+
+# Memory Management
+max_memory_gb: 0           # 0 = auto-detect / use all available
+frame_buffer_size: 16      # frames to keep in memory buffer
+
+# Logging
+log_level: "INFO"          # DEBUG, INFO, WARNING, ERROR
+log_to_file: true
+console_log_level: "INFO"
+
+# Cleanup
+cleanup_temp_on_success: false
+cleanup_chunks_on_success: false
+keep_logs: true
+keep_checkpoints: true
+
+# Batch Processing
+batch_sleep_interval: 10   # seconds between videos in batch mode
+
+# Advanced FFmpeg
+ffmpeg_threads: 0          # 0 = auto
+ffmpeg_hwaccel: ""         # auto, cuda, vaapi, dxva2, videotoolbox
