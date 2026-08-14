@@ -18,7 +18,7 @@ class FFmpegError(Exception):
 
 def check_ffmpeg() -> Tuple[bool, str]:
     """Check if FFmpeg is installed and available.
-
+    
     Returns:
         Tuple of (is_available, version_string)
     """
@@ -38,18 +38,18 @@ def check_ffmpeg() -> Tuple[bool, str]:
 def run_ffmpeg(cmd: List[str], timeout: Optional[int] = None, 
                description: str = "FFmpeg operation") -> None:
     """Run an FFmpeg command with error handling.
-
+    
     Args:
         cmd: Command list (without 'ffmpeg' prefix)
         timeout: Timeout in seconds
         description: Description for logging
-
+        
     Raises:
         FFmpegError: If command fails
     """
     full_cmd = ['ffmpeg', '-y'] + cmd
     logger.debug(f"Running: {' '.join(full_cmd)}")
-
+    
     try:
         result = subprocess.run(
             full_cmd,
@@ -59,11 +59,11 @@ def run_ffmpeg(cmd: List[str], timeout: Optional[int] = None,
             encoding='utf-8',
             errors='replace'
         )
-
+        
         if result.returncode != 0:
             error_msg = result.stderr[-2000:] if len(result.stderr) > 2000 else result.stderr
             raise FFmpegError(f"{description} failed (code {result.returncode}): {error_msg}")
-
+            
     except subprocess.TimeoutExpired:
         raise FFmpegError(f"{description} timed out after {timeout}s")
     except FileNotFoundError:
@@ -73,7 +73,7 @@ def run_ffmpeg(cmd: List[str], timeout: Optional[int] = None,
 def extract_audio(input_path: str, output_path: str, 
                   codec: str = "aac", bitrate: str = "192k") -> None:
     """Extract audio track from video.
-
+    
     Args:
         input_path: Source video path
         output_path: Output audio path
@@ -97,14 +97,14 @@ def split_video(input_path: str, output_pattern: str,
                 chunk_duration: int, video_codec: str = "copy",
                 audio_codec: str = "copy") -> List[str]:
     """Split video into chunks using segment muxer.
-
+    
     Args:
         input_path: Source video path
         output_pattern: Output path pattern with %03d
         chunk_duration: Duration of each chunk in seconds
         video_codec: Video codec (copy or re-encode)
         audio_codec: Audio codec (copy or re-encode)
-
+        
     Returns:
         List of generated chunk file paths
     """
@@ -120,19 +120,19 @@ def split_video(input_path: str, output_pattern: str,
         '-avoid_negative_ts', 'make_zero',
         output_pattern
     ]
-
+    
     run_ffmpeg(cmd, timeout=None, description="Video splitting")
-
+    
     # Find generated chunks
     chunk_files = []
     output_dir = os.path.dirname(output_pattern)
     base_pattern = os.path.basename(output_pattern).replace('%03d', '')
-
+    
     if os.path.exists(output_dir):
         for f in sorted(os.listdir(output_dir)):
-            if f.startswith(base_pattern.replace('.mp4', '')) and f.endswith('.mp4'):
+            if f.startswith(base_pattern) and f.endswith('.mp4'):
                 chunk_files.append(os.path.join(output_dir, f))
-
+    
     logger.info(f"Video split into {len(chunk_files)} chunks")
     return chunk_files
 
@@ -142,37 +142,37 @@ def extract_frames(input_path: str, output_pattern: str,
                    start_time: Optional[float] = None,
                    duration: Optional[float] = None) -> int:
     """Extract frames from video as images.
-
+    
     Args:
         input_path: Source video path
         output_pattern: Output image pattern (e.g., frame_%04d.png)
         fps: Target FPS (None = original)
         start_time: Start time in seconds
         duration: Duration in seconds
-
+        
     Returns:
         Number of frames extracted
     """
     cmd = []
-
+    
     if start_time is not None:
         cmd.extend(['-ss', str(start_time)])
-
+    
     cmd.extend(['-i', input_path])
-
+    
     if duration is not None:
         cmd.extend(['-t', str(duration)])
-
+    
     if fps is not None:
         cmd.extend(['-vf', f'fps={fps}'])
-
+    
     cmd.extend([
         '-pix_fmt', 'rgb24',
         output_pattern
     ])
-
+    
     run_ffmpeg(cmd, timeout=None, description="Frame extraction")
-
+    
     # Count extracted frames
     output_dir = os.path.dirname(output_pattern)
     frame_count = len([f for f in os.listdir(output_dir) 
@@ -186,7 +186,7 @@ def frames_to_video(frame_pattern: str, output_path: str,
                     crf: int = 23, preset: str = "medium",
                     resolution: Optional[Tuple[int, int]] = None) -> None:
     """Assemble frames into video.
-
+    
     Args:
         frame_pattern: Input frame pattern (e.g., frame_%04d.png)
         output_path: Output video path
@@ -200,7 +200,7 @@ def frames_to_video(frame_pattern: str, output_path: str,
         '-framerate', str(fps),
         '-i', frame_pattern,
     ]
-
+    
     if audio_path and os.path.exists(audio_path):
         cmd.extend(['-i', audio_path])
         cmd.extend([
@@ -210,17 +210,17 @@ def frames_to_video(frame_pattern: str, output_path: str,
         ])
     else:
         cmd.extend(['-an'])
-
+    
     vf_filters = []
     if resolution:
         vf_filters.append(f"scale={resolution[0]}:{resolution[1]}")
-
+    
     # Ensure even dimensions for H.264
     vf_filters.append("format=yuv420p")
-
+    
     if vf_filters:
         cmd.extend(['-vf', ','.join(vf_filters)])
-
+    
     cmd.extend([
         '-c:v', 'libx264',
         '-crf', str(crf),
@@ -229,43 +229,85 @@ def frames_to_video(frame_pattern: str, output_path: str,
         '-pix_fmt', 'yuv420p',
         output_path
     ])
-
+    
     run_ffmpeg(cmd, timeout=None, description="Frame assembly")
     logger.info(f"Video assembled: {output_path}")
 
 
 def merge_videos(chunk_list_path: str, output_path: str,
-                 crf: int = 23, preset: str = "medium") -> None:
+                 crf: int = 23, preset: str = "medium",
+                 audio_path: Optional[str] = None) -> None:
     """Merge video chunks using concat demuxer.
-
+    
     Args:
         chunk_list_path: Path to text file with chunk list
         output_path: Output video path
         crf: Quality
         preset: Encoding preset
+        audio_path: Optional full audio track to mux into final video
     """
     cmd = [
         '-f', 'concat',
         '-safe', '0',
         '-i', chunk_list_path,
+    ]
+    
+    if audio_path and os.path.exists(audio_path):
+        cmd.extend(['-i', audio_path])
+        cmd.extend([
+            '-c:a', 'aac',
+            '-b:a', '192k',
+            '-shortest',
+            '-map', '0:v:0',   # Video from concat
+            '-map', '1:a:0',   # Audio from external file
+        ])
+    else:
+        cmd.extend(['-c:a', 'aac', '-b:a', '192k'])
+    
+    cmd.extend([
         '-c:v', 'libx264',
         '-crf', str(crf),
         '-preset', preset,
-        '-c:a', 'aac',
-        '-b:a', '192k',
         '-movflags', '+faststart',
         '-pix_fmt', 'yuv420p',
         output_path
-    ]
-
+    ])
+    
     run_ffmpeg(cmd, timeout=None, description="Video merging")
     logger.info(f"Chunks merged: {output_path}")
+
+
+def add_audio_to_video(video_path: str, audio_path: str, 
+                       output_path: str, crf: int = 23, 
+                       preset: str = "medium") -> None:
+    """Add/replace audio in a video file.
+    
+    Args:
+        video_path: Source video
+        audio_path: Audio file to add
+        output_path: Output path
+        crf: Video quality
+        preset: Encoding preset
+    """
+    cmd = [
+        '-i', video_path,
+        '-i', audio_path,
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-shortest',
+        output_path
+    ]
+    run_ffmpeg(cmd, timeout=None, description="Audio muxing")
+    logger.info(f"Audio added: {output_path}")
 
 
 def generate_thumbnail(video_path: str, output_path: str, 
                        time_offset: Optional[float] = None) -> None:
     """Generate a thumbnail from video.
-
+    
     Args:
         video_path: Source video path
         output_path: Output thumbnail path
@@ -283,7 +325,7 @@ def generate_thumbnail(video_path: str, output_path: str,
             time_offset = duration / 2
         except Exception:
             time_offset = 1.0
-
+    
     cmd = [
         '-ss', str(time_offset),
         '-i', video_path,
@@ -292,7 +334,7 @@ def generate_thumbnail(video_path: str, output_path: str,
         '-vf', 'scale=480:-1',
         output_path
     ]
-
+    
     run_ffmpeg(cmd, timeout=60, description="Thumbnail generation")
     logger.info(f"Thumbnail generated: {output_path}")
 
